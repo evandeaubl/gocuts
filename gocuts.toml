@@ -1,0 +1,9 @@
+gocuts.gmail.url = "https://mail.google.com"
+gocuts.gcal.url = "https://calendar.google.com"
+gocuts.drive.url = "https://drive.google.com"
+gocuts.maps.url = "https://maps.google.com"
+gocuts.gh.url = "https://github.com"
+gocuts.hn.url = "https://news.ycombinator.com"
+
+[gocuts.docs]
+url = "https://docs.google.com"
