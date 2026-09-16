@@ -1,10 +1,12 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"encoding/xml"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -18,6 +20,7 @@ type server struct {
 	baseURL string
 	suggest bool
 	list    bool
+	key     string
 }
 
 func (s *server) handler() http.Handler {
@@ -28,7 +31,16 @@ func (s *server) handler() http.Handler {
 		mux.HandleFunc("GET /suggest", s.handleSuggest)
 	}
 	mux.HandleFunc("GET /opensearch.xml", s.handleOpenSearch)
-	return mux
+	if s.key == "" {
+		return mux
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("key")), []byte(s.key)) != 1 {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -61,14 +73,18 @@ func (s *server) handleOpenSearch(w http.ResponseWriter, r *http.Request) {
 	if base == "" {
 		base = requestBase(r)
 	}
+	keyParam := ""
+	if s.key != "" {
+		keyParam = "&key=" + url.QueryEscape(s.key)
+	}
 	urls := []openSearchURL{
-		{Type: "text/html", Method: "get", Template: base + "/search?q={searchTerms}"},
+		{Type: "text/html", Method: "get", Template: base + "/search?q={searchTerms}" + keyParam},
 	}
 	if s.suggest {
 		urls = append(urls, openSearchURL{
 			Type:     "application/x-suggestions+json",
 			Method:   "get",
-			Template: base + "/suggest?q={searchTerms}",
+			Template: base + "/suggest?q={searchTerms}" + keyParam,
 		})
 	}
 	doc := openSearchDescription{
@@ -117,6 +133,13 @@ func (s *server) renderShortcuts(w http.ResponseWriter, r *http.Request, status 
 			rows = append(rows, shortcutRow{Name: n, URL: dests[i]})
 		}
 	}
+	keySuffix := ""
+	osddHref := "/opensearch.xml"
+	if s.key != "" {
+		escaped := url.QueryEscape(s.key)
+		keySuffix = "&key=" + escaped
+		osddHref += "?key=" + escaped
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	_ = pageTmpl.Execute(w, pageData{
@@ -126,6 +149,8 @@ func (s *server) renderShortcuts(w http.ResponseWriter, r *http.Request, status 
 		Rows:           rows,
 		ListHidden:     !s.list,
 		SuggestEnabled: s.suggest,
+		KeySuffix:      keySuffix,
+		OsddHref:       osddHref,
 	})
 }
 
@@ -141,6 +166,8 @@ type pageData struct {
 	Rows           []shortcutRow
 	ListHidden     bool
 	SuggestEnabled bool
+	KeySuffix      string
+	OsddHref       string
 }
 
 var pageTmpl = template.Must(template.New("page").Parse(`<!DOCTYPE html>
@@ -149,7 +176,7 @@ var pageTmpl = template.Must(template.New("page").Parse(`<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Title}}</title>
-<link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title="gocuts">
+<link rel="search" type="application/opensearchdescription+xml" href="{{.OsddHref}}" title="gocuts">
 <style>
 body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; color: #222; }
 table { border-collapse: collapse; width: 100%; }
@@ -161,10 +188,10 @@ code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
 <h1>{{.Title}}</h1>
 {{if .Message}}<p>{{.Message}}</p>{{end}}
 <h2>Install</h2>
-<p>This page publishes OpenSearch metadata (<a href="/opensearch.xml">opensearch.xml</a>), so your browser
+<p>This page publishes OpenSearch metadata (<a href="{{.OsddHref}}">opensearch.xml</a>), so your browser
 can add gocuts as a search engine. Firefox: pick "Add gocuts" from the address-bar search icon while on this
 page. Chrome: Settings &rarr; Search engine &rarr; Manage search engines &rarr; Add, using keyword
-<code>go</code> and URL <code>{{.Base}}/search?q=%s</code>.</p>
+<code>go</code> and URL <code>{{.Base}}/search?q=%s{{.KeySuffix}}</code>.</p>
 <p>With gocuts as your search engine, typing <code>go NAME</code> in the address bar redirects to NAME's
 destination{{if .SuggestEnabled}}; a partial name shows suggestions{{end}}.</p>
 {{if .ListHidden}}

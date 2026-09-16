@@ -17,6 +17,7 @@ func main() {
 	baseURL := flag.String("base-url", envOr("GOCUTS_BASE_URL", ""), "external base URL used in OpenSearch templates (default: derived from each request)")
 	suggest := flag.Bool("suggest", envBool("GOCUTS_SUGGEST", true), "serve the /suggest endpoint and advertise it in opensearch.xml (or set GOCUTS_SUGGEST)")
 	list := flag.Bool("list", envBool("GOCUTS_LIST", true), "list shortcuts on the home page and on unknown-shortcut errors (or set GOCUTS_LIST)")
+	key := os.Getenv("GOCUTS_KEY")
 	flag.Parse()
 
 	if *configPath == "" {
@@ -27,7 +28,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("gocuts: %v", err)
 	}
-	srv := &server{cfg: cfg, baseURL: strings.TrimRight(*baseURL, "/"), suggest: *suggest, list: *list}
+	srv := &server{cfg: cfg, baseURL: strings.TrimRight(*baseURL, "/"), suggest: *suggest, list: *list, key: key}
 
 	httpSrv := &http.Server{
 		Addr:              *addr,
@@ -37,7 +38,7 @@ func main() {
 		WriteTimeout:      10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	log.Printf("gocuts: serving %d shortcuts on %s (suggest=%t list=%t)", len(cfg.names), *addr, *suggest, *list)
+	log.Printf("gocuts: serving %d shortcuts on %s (suggest=%t list=%t auth=%t)", len(cfg.names), *addr, *suggest, *list, key != "")
 	log.Fatal(httpSrv.ListenAndServe())
 }
 

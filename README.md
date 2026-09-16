@@ -46,11 +46,32 @@ with the `-config` flag or the `GOCUTS_CONFIG` environment variable.
 | `-base-url`   | `GOCUTS_BASE_URL`    | derived | External base URL used in OpenSearch templates                     |
 | `-suggest`    | `GOCUTS_SUGGEST`     | `true`  | Serve `/suggest` and advertise it in `opensearch.xml`              |
 | `-list`       | `GOCUTS_LIST`        | `true`  | List shortcuts on the home page and unknown-shortcut error pages   |
+| —             | `GOCUTS_KEY`         | —       | Require a `key` query parameter on all routes (see below)          |
 
 Boolean environment variables accept `true`/`false` (or `1`/`0`). By default
 the OpenSearch templates are built from each request's `Host` header (honoring
 `X-Forwarded-Proto`); set `-base-url` when running behind a proxy with an
 external hostname.
+
+### Access key
+
+For private deployments, set `GOCUTS_KEY` (environment variable only — there
+is deliberately no command-line flag, since process arguments can leak through
+shell history and process listings). Once set, every route requires a matching
+`key` query parameter and returns `403 Forbidden` otherwise:
+
+```sh
+docker run -d -p 8080:8080 \
+  -e GOCUTS_KEY=some-long-random-string \
+  -v /path/to/gocuts.toml:/gocuts.toml:ro \
+  evandeaubl/gocuts
+```
+
+To keep the browser experience unchanged, `opensearch.xml` embeds the key in
+its search and suggestion templates, and the home page embeds it in its
+OpenSearch discovery links and setup instructions — so once you add the search
+engine from a keyed URL, everything works as before. Be aware the key appears
+in browser history and any server access logs.
 
 ## Running
 
